@@ -9,6 +9,7 @@
 
 #include <d2s.hpp>
 #include <font.hpp>
+#include <text_box.hpp>
 
 #include <algorithm>
 #include <array>
@@ -16,31 +17,22 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace d2d::client {
 
-// A text record (kind 4, bottom-left x, y): lines centred across `width`,
-// wrapped to it; one line sits centred in `height`.
-// ponytail: wrapped lines run down from the box's top; FUN_004fd060's
-// own placement of several lines isn't traced.
+// FUN_004fd060 adds colour-4 text through FUN_004fc9b0; FUN_004fbf30
+// draws the resulting rows. See frontend-text-box.md for the Latin path.
 static void draw_text_box(std::vector<std::uint8_t>& framebuffer, const Scene& scene, const d2d::font::Font& font,
-                          const std::string& line, int x, int y, int width, int height, std::uint8_t shade = 255) {
-    std::vector<std::string> rows{ std::string{} };
-    std::size_t start = 0;
-    while (start < line.size()) {
-        const auto end = std::min(line.find(' ', start), line.size());
-        const std::string word = line.substr(start, end - start);
-        if (!rows.back().empty() && font.measure(rows.back() + " " + word) > width) rows.emplace_back();
-        rows.back() += (rows.back().empty() ? "" : " ") + word;
-        start = end + 1;
-    }
-    const int top = rec_top(y, height), pitch = font.line_height();
-    int row_y = rows.size() == 1 ? top + (height - pitch) / 2 : top;
+                          const std::string& line, int x, int y, int width, int height,
+                          std::uint8_t shade = 255, int margin_x = 0, int margin_y = 0) {
+    const auto rows = d2d::font::text_box_rows(line, x, y, width, height, font.line_height(),
+        [&](std::string_view text) { return font.measure(text); }, margin_x, margin_y);
     for (const auto& row : rows) {
-        font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, scene.pal, x + (width - font.measure(row)) / 2, row_y, row, shade, shade, shade);
-        row_y += pitch;
+        font.draw_tinted_baseline(framebuffer, kScreenWidth, kScreenHeight, scene.pal,
+                                 row.x, row.baseline, row.text, shade, shade, shade);
     }
 }
 
@@ -48,22 +40,22 @@ void render_title(std::vector<std::uint8_t>& framebuffer,
                   const Scene& scene,
                   std::span<const Button> buttons,
                   std::uint32_t elapsed_ms) {
-    // Full-screen background — no need to clear; the 4×3 grid tiles fill
-    // exactly 800×600 with no gaps.
+    // Full-screen background â€” no need to clear; the 4Ã—3 grid tiles fill
+    // exactly 800Ã—600 with no gaps.
     blit_dc6_grid(framebuffer, scene.background, scene.pal, 0, 0, scene.bg_tiles_across);
 
     // Diablo2.dc6 (menu record 0x708e00) is the CLASSIC-D2 static DIABLO II
-    // logo — a 320×151 pre-baked title asset. In LoD it stays LOADED but
+    // logo â€” a 320Ã—151 pre-baked title asset. In LoD it stays LOADED but
     // never drawn: the animated D2logo{Black,Fire}{L,R} pieces replace it,
     // and gameselectscreenEXP.dc6 already has "EXPANSION SET / Lord of
     // Destruction" baked into the background. Drawing both stacks two
-    // "DIABLO II"s at different anchors — Bret caught the doubled letters.
+    // "DIABLO II"s at different anchors â€” Bret caught the doubled letters.
     // RE: game.exe gates the classic-mode fallback on DAT_007795ec == 0
     // (the "expansion installed" flag; see char-create-table.md). We
     // never load classic-only, so `logo_static` is intentionally unused.
     (void)scene.logo_static;
 
-    // "DIABLO II" animated logo halves — per RE records at 0x708e30 and
+    // "DIABLO II" animated logo halves â€” per RE records at 0x708e30 and
     // 0x708e60, both anchored at (400, 120). Each DC6 frame's bottom-left
     // origin (per DCC convention) places itself relative to that anchor.
     // Black silhouettes first, then fire fills on top with the warm-tint
@@ -78,7 +70,7 @@ void render_title(std::vector<std::uint8_t>& framebuffer,
     blit_additive  (framebuffer, scene.logo_fl.frame(0, frame_index), scene.pal, &scene.sky_pl2, kLogoAnchorX, kLogoAnchorY);
     blit_additive  (framebuffer, scene.logo_fr.frame(0, frame_index), scene.pal, &scene.sky_pl2, kLogoAnchorX, kLogoAnchorY);
 
-    // Buttons — chrome frames from RE'd assets: 2-frame (normal/pressed)
+    // Buttons â€” chrome frames from RE'd assets: 2-frame (normal/pressed)
     // for Short/Medium, 4-frame two-piece composite for Wide/Narrow. Hover
     // brightens the label to gold; no chrome-only hover frame exists.
     for (const auto& button : buttons) {
@@ -92,7 +84,7 @@ void render_title(std::vector<std::uint8_t>& framebuffer,
             const int label_x = button.x + (button.width - label_width) / 2;
             const int label_y = button.y + (button.height - line_height) / 2;
             if (button.hovered) {
-                // Gold hover — matches the highlight D2 draws through a
+                // Gold hover â€” matches the highlight D2 draws through a
                 // PL2 text-colour shift.
                 scene.font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, scene.pal, label_x, label_y, button.label,
                                    255, 208, 80);
@@ -221,7 +213,7 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
     }
 
     if (scene.saves.empty()) {
-        // Empty-list placeholder text — centred on the panel.
+        // Empty-list placeholder text â€” centred on the panel.
         constexpr const char* empty1 = "NO CHARACTERS YET";
         constexpr const char* empty2 = "click CREATE NEW CHARACTER to start";
         const int width1 = scene.font.measure(empty1);
@@ -277,7 +269,7 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
     if (select_ui.confirm_delete) {
         // DELETE's question: PopUpOKCancel2 (record 0xd6), the text (0xd9), NO / YES.
         blit_dc6_grid(framebuffer, scene.popup_ok_cancel, pal, 268, rec_top(350, 176), 2);
-        draw_text_box(framebuffer, scene, scene.font24, select_ui.delete_text, 268, 320, 264, 120);
+        draw_text_box(framebuffer, scene, scene.font, select_ui.delete_text, 268, 320, 264, 120, 255, 10, 8);
         for (const auto& [button, label] : { std::pair{ &select_ui.popup_no, &select_ui.no_label }, std::pair{ &select_ui.popup_yes, &select_ui.yes_label } }) {
             blit_button_chrome(framebuffer, pal, scene.cancel_button, button->x, button->y, button->hovered && button->pressed);
             const int label_x = button->x + (button->width - scene.font.measure(*label)) / 2, label_y = button->y + (button->height - scene.font.line_height()) / 2;
@@ -309,7 +301,7 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
     // FUN_00433380 on a Sky screen: PopUpOK (record 0xde), the message
     // (0xe0, Font24) and OK (0xe1).
     blit_dc6_grid(framebuffer, scene.popup_ok, pal, 268, rec_top(350, 176), 2);
-    draw_text_box(framebuffer, scene, scene.font24, select_ui.popup, 268, 300, 264, 100);
+    draw_text_box(framebuffer, scene, scene.font24, select_ui.popup, 268, 300, 264, 100, 255, 10, 8);
     const auto& ok = select_ui.popup_ok;
     blit_button_chrome(framebuffer, pal, scene.cancel_button, ok.x, ok.y, ok.hovered && ok.pressed);
     const int label_x = ok.x + (ok.width - scene.font.measure(select_ui.ok_label)) / 2, label_y = ok.y + (ok.height - scene.font.line_height()) / 2;
@@ -320,8 +312,8 @@ void render_charselect(std::vector<std::uint8_t>& framebuffer,
 void render_credits(std::vector<std::uint8_t>& framebuffer,
                     const Scene& scene,
                     std::uint32_t elapsed_ms) {
-    // creditsbckgexpand.dc6 has the same 4×3 sub-frame grid as the title
-    // background; both add up to exactly 800×600.
+    // creditsbckgexpand.dc6 has the same 4Ã—3 sub-frame grid as the title
+    // background; both add up to exactly 800Ã—600.
     blit_dc6_grid(framebuffer, scene.credits_bg, scene.pal, 0, 0, scene.bg_tiles_across);
 
     if (scene.credits.empty()) {
@@ -427,7 +419,7 @@ void handle_charcreate_click(CharCreateUI& create_ui,
         return;
     }
     const int picked = create_ui.hovered;
-    if (picked < 0 || create_ui.selected == picked) return;   // clicked selected class → no-op
+    if (picked < 0 || create_ui.selected == picked) return;   // clicked selected class â†’ no-op
     // Deselect old.
     if (create_ui.selected >= 0) {
         auto& prev = create_ui.classes[create_ui.selected];
@@ -450,7 +442,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
 
     blit_dc6_grid(framebuffer, scene.charcreate_bg, pal, 0, 0, scene.bg_tiles_across);
 
-    // Campfire — records 0x70ae70 (345, 470) and 0x70aea0 (345, 454), the
+    // Campfire â€” records 0x70ae70 (345, 470) and 0x70aea0 (345, 454), the
     // same fire.dc6 twice. A one-sprite widget draws at (x, y) less its
     // first frame's offsets (FUN_005005b0), so (x, y) is that frame's
     // bottom-left; an animation set (the classes) draws at (x, y) itself.
@@ -492,7 +484,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
         blit_at_anchor(framebuffer, spr.frame(0, frame_index), pal, position.x, position.y);
     }
 
-    // Selected class name — big warm-gold caption above the panel area.
+    // Selected class name â€” big warm-gold caption above the panel area.
     // TBL-sourced ("Amazon" / "Sorceress" / etc. all live under those exact
     // keys in string.tbl per a probe of the file).
     std::string caption;
@@ -551,7 +543,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
         }
     }
 
-    // Name-entry field — per RE record 0x70b290: (319, 519, 169, 26)
+    // Name-entry field â€” per RE record 0x70b290: (319, 519, 169, 26)
     // with textbox.dc6 chrome. Draw the chrome, then the typed name
     // centered inside. Prompt "Character Name" shows above the box.
     if (scene.textbox.frames_per_direction() > 0) {
@@ -585,14 +577,14 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
         }
     }
 
-    // Hardcore checkbox — chrome from clickbox.dc6 (frame 0 unchecked,
+    // Hardcore checkbox â€” chrome from clickbox.dc6 (frame 0 unchecked,
     // 1 checked). Label rendered to the LEFT of the box in the pale
     // grey D2 uses for inactive-but-toggleable text; goes bright gold
     // when checked.
     if (scene.clickbox.frames_per_direction() >= 2 && !create_ui.hardcore_label.empty()) {
         const auto& frame = scene.clickbox.frame(0, create_ui.hardcore ? 1 : 0);
         blit_sprite(framebuffer, frame, pal, kHardcoreX, kHardcoreY);
-        // Label rendered right of the box — RE'd hitbox 0x70b080 sits at
+        // Label rendered right of the box â€” RE'd hitbox 0x70b080 sits at
         // x=339 (20px right of the box's x=319), covering the label's
         // click zone.
         const int line_height = scene.font.line_height();
@@ -617,7 +609,7 @@ void render_charcreate(std::vector<std::uint8_t>& framebuffer,
         scene.font.draw_tinted(framebuffer, kScreenWidth, kScreenHeight, pal, kHardcoreX + kHardcoreW + 5, label_y, create_ui.expansion_label, shade[0], shade[1], shade[2]);
     }
 
-    // OK / EXIT buttons at the bottom — MediumSelButtonBlank chrome.
+    // OK / EXIT buttons at the bottom â€” MediumSelButtonBlank chrome.
     // OK renders muted grey when disabled (no class picked yet or empty name).
     for (const Button* button : {&create_ui.cancel_btn, &create_ui.ok_btn}) {
         const bool disabled = (button == &create_ui.ok_btn) && !button->do_switch;
@@ -824,7 +816,9 @@ void render_tcpip(std::vector<std::uint8_t>& framebuffer, const Scene& scene, co
     button(tcpip.cancel, tcpip.cancel_label, true);
     // The buttons' hover texts (FUN_00430120 / FUN_00430160 show records 0x108 / 0x109).
     if (!tcpip.box_open && tcpip.has_ip && (tcpip.host.hovered || tcpip.join.hovered))
-        text(scene.font_formal11, tcpip.host.hovered ? tcpip.host_text : tcpip.join_text, 265, 520, 272, 210);
+        draw_text_box(framebuffer, scene, scene.font_formal11,
+                      tcpip.host.hovered ? tcpip.host_text : tcpip.join_text, 265, 520, 272, 210,
+                      255, tcpip.join.hovered ? 2 : 0);
     if (!tcpip.box_open) return;
     // The join box: PopUpOKCancel2 (0x10f), its prompt (0x10c), IPAddressBox
     // (0x10e) and the edit line (0x10d, FontFormal12, from its left edge).
@@ -843,7 +837,7 @@ void render_tcpip_popup(std::vector<std::uint8_t>& framebuffer, const Scene& sce
     if (tcpip.popup.empty()) return;
     // FUN_00433380 on a Sky screen: PopUpOK (0xde), the message (0xe0, Font24), OK (0xe1).
     blit_dc6_grid(framebuffer, scene.popup_ok, scene.pal, 268, rec_top(350, 176), 2);
-    draw_text_box(framebuffer, scene, scene.font24, tcpip.popup, 268, 300, 264, 100);
+    draw_text_box(framebuffer, scene, scene.font24, tcpip.popup, 268, 300, 264, 100, 255, 10, 8);
     const auto& ok = tcpip.popup_ok;
     blit_button_chrome(framebuffer, scene.pal, scene.cancel_button, ok.x, ok.y, ok.hovered && ok.pressed);
     const int label_x = ok.x + (ok.width - scene.font.measure(tcpip.ok_label)) / 2, label_y = ok.y + (ok.height - scene.font.line_height()) / 2;
@@ -861,7 +855,7 @@ TitleUI title_ui(const Scene& scene, bool coop) {
         Screen goto_screen = Screen::Title;
         bool quit = false;
     };
-    // ID map derived from menu records — see docs/research/re/frontend-menu-table.md.
+    // ID map derived from menu records â€” see docs/research/re/frontend-menu-table.md.
     const Spec specs[] = {
         {264, 324, 272, 35, 0x13f2, "SINGLE PLAYER",     &scene.btn_wide,
             true, Screen::CharSelect, false},
