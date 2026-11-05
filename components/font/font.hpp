@@ -2,9 +2,9 @@
 // D2Decomp bitmap-font parser + text blitter helpers.
 //
 // D2 stores fonts as a pair:
-//   * font<size>.tbl â€” glyph metrics table, "Woo!\x01" magic + 7 header
+//   * font<size>.tbl — glyph metrics table, "Woo!\x01" magic + 7 header
 //     bytes + 256 * 14-byte glyph records.
-//   * font<size>.dc6 â€” 1 direction Ã— N frames DC6, one frame per glyph
+//   * font<size>.dc6 — 1 direction × N frames DC6, one frame per glyph
 //     indexed by the glyph record's `frame` field.
 //
 // Glyph record (14 bytes each):
@@ -47,7 +47,7 @@ public:
     Font() = default;
 
     // Consumes both the .tbl bytes and the already-parsed DC6 sheet. Takes
-    // the sheet by value â€” Font owns it thereafter.
+    // the sheet by value — Font owns it thereafter.
     Font(std::span<const std::byte> tbl_bytes, dc6::Sprite sheet)
         : sheet_(std::move(sheet)) {
         parse_tbl(tbl_bytes);
@@ -57,14 +57,14 @@ public:
     [[nodiscard]] int line_height() const noexcept { return line_height_; }
     [[nodiscard]] std::size_t glyph_count() const noexcept { return glyphs_.size(); }
 
-    // Nullptr when the char isn't in the font â€” caller decides whether to
+    // Nullptr when the char isn't in the font — caller decides whether to
     // skip, substitute, or throw.
     [[nodiscard]] const Glyph* find(std::uint16_t code) const {
         auto found = glyphs_.find(code);
         return found == glyphs_.end() ? nullptr : &found->second;
     }
 
-    // Total advance width of `text` (single-line â€” no newline handling yet).
+    // Total advance width of `text` (single-line — no newline handling yet).
     [[nodiscard]] int measure(std::string_view text) const {
         int width = 0;
         for (unsigned char letter : text) if (auto* glyph = find(letter)) width += glyph->width;
@@ -83,7 +83,7 @@ public:
     }
 
     // Same as draw(), but multiplies each palette-lookup RGB by (tr, tg, tb)
-    // / 255. Handy for coloured text without a per-colour font DC6 â€” pass
+    // / 255. Handy for coloured text without a per-colour font DC6 — pass
     // (255, 200, 60) for a rough gold, (255, 96, 96) for red, etc. Not the
     // same as D2's PL2 hue-shift (which does index remapping), but visually
     // close enough for section headers and highlight rows.
@@ -153,7 +153,7 @@ private:
         constexpr std::size_t kHdr = 12;
         constexpr std::size_t kRec = 14;
         if (bytes.size() < kHdr) throw std::runtime_error("font: truncated header");
-        // "Woo!\x01" magic â€” first 5 bytes.
+        // "Woo!\x01" magic — first 5 bytes.
         if (bytes[0] != std::byte{0x57} || bytes[1] != std::byte{0x6f}
             || bytes[2] != std::byte{0x6f} || bytes[3] != std::byte{0x21}
             || bytes[4] != std::byte{0x01})
