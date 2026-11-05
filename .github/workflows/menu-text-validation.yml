@@ -40,7 +40,7 @@ jobs:
           # libsdl3-dev is only in 25.04+; ubuntu-latest (24.04) lacks it.
           - os: ubuntu-26.04
             name: Linux (GCC)
-          - os: macos-latest
+          - os: macos-26-intel
             name: macOS (Clang)
           - os: windows-latest
             name: Windows (MSVC)
@@ -166,7 +166,7 @@ jobs:
           # Only main saves: each branch run's ~1 GB copy pushed the repo past
           # GitHub's 10 GB and evicted main's, so builds started cold. PRs
           # restore main's.
-          save: false
+          save: true
           verbose: 2          # the stats list why a call wasn't cacheable
 
       # The Bink-only FFmpeg (apps/d2d/CMakeLists.txt): CMake skips building
@@ -410,7 +410,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             changed=$(gh pr view "${{ github.event.pull_request.number }}" --json files --jq '.files[].path') || exit 1
           elif [ "${{ github.ref }}" = "refs/heads/validate/menu-text-layout" ]; then
-            changed=$(git diff --name-only 35c172252ee4bc2a787ec8fcfc36da4e79f18ade HEAD)
+            changed=$(git diff --name-only 48676a42229ca2b3704615242b2b95c05ce206d2 HEAD)
           fi
           # gh pr view lists 100 files at most, compare 300: a list that full
           # may be cut short, so tidy everything.
